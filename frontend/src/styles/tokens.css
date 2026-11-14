@@ -1,0 +1,34 @@
+/* docflow 视觉：档案室「文件夹与凸耳标签」
+ * 卡其纸色 + 墨黑 + 红蓝印章 + 抽屉编号；数字与文件名走 Courier Prime。
+ * 全部色值用 oklch()，无纯黑纯白，无紫蓝渐变。 */
+:root {
+  --paper: oklch(92.6% 0.022 84);
+  --paper-2: oklch(89.2% 0.028 81);
+  --paper-3: oklch(95.2% 0.014 86);
+  --paper-deep: oklch(84.4% 0.032 79);
+  --kraft: oklch(65.5% 0.055 68);
+  --kraft-deep: oklch(52% 0.05 64);
+  --ink: oklch(23.6% 0.012 72);
+  --ink-2: oklch(37% 0.014 72);
+  --ink-3: oklch(51% 0.016 74);
+  --line: oklch(78.5% 0.018 80);
+  --line-strong: oklch(64% 0.022 78);
+  --seal-red: oklch(48% 0.148 27);
+  --seal-red-soft: oklch(48% 0.148 27 / 0.14);
+  --seal-blue: oklch(44% 0.088 248);
+  --seal-blue-soft: oklch(44% 0.088 248 / 0.12);
+  --seal-green: oklch(48% 0.082 152);
+  --seal-green-soft: oklch(48% 0.082 152 / 0.13);
+  --warn: oklch(62% 0.118 68);
+  --warn-soft: oklch(62% 0.118 68 / 0.16);
+  --tab: oklch(87.4% 0.034 88);
+  --shadow-slip: 0 14px 26px -22px oklch(32% 0.03 68);
+  --font-serif: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+  --font-mono: 'Courier Prime', 'Courier New', ui-monospace, monospace;
+  --step--1: clamp(0.76rem, 0.74rem + 0.1vw, 0.82rem);
+  --step-0: clamp(0.86rem, 0.83rem + 0.15vw, 0.95rem);
+  --step-1: clamp(1rem, 0.95rem + 0.25vw, 1.1rem);
+  --step-2: clamp(1.22rem, 1.08rem + 0.6vw, 1.55rem);
+  --step-3: clamp(1.6rem, 1.25rem + 1.4vw, 2.35rem);
+  --step-4: clamp(2.1rem, 1.45rem + 2.6vw, 3.4rem);
+}
