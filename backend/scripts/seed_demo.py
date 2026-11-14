@@ -210,6 +210,10 @@ def seed_runs(db, users: dict[str, User], rule: NamingRule) -> None:
         )
         db.add(dry)
         db.flush()
+        # 历史演示批次自成链根、移交版本 v1（执行时会按三来源全覆盖写覆盖台账）
+        from src.services import source_service
+
+        source_service.assign_chain_fields(db, dry, None)
         archive_service.execute_run(db, dry, mode=RunMode.DRY_RUN.value)
         dry.started_at = SEED_STAMP - timedelta(minutes=6)
         dry.finished_at = SEED_STAMP - timedelta(minutes=5)
@@ -241,6 +245,9 @@ def seed_runs(db, users: dict[str, User], rule: NamingRule) -> None:
         )
         db.add(failed)
         db.flush()
+        from src.services import source_service
+
+        source_service.assign_chain_fields(db, failed, None)
         _created("ArchiveRun", SEED_FAILED_RUN_NO)
     else:
         _skipped("ArchiveRun", SEED_FAILED_RUN_NO)

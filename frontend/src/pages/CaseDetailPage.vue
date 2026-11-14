@@ -14,6 +14,9 @@
         <p class="case-head__policy mono">保单号 {{ detail.policy_no }}</p>
         <div class="row">
           <StatusStamp :status="detail.status" kind="case" />
+          <span v-if="detail.handover_blocked" class="tag tag--red" :title="detail.handover_state_label">
+            暂时不能移交（投件源未覆盖）
+          </span>
           <span class="tag">受理员 {{ detail.assignee }}</span>
           <span class="tag">出险 {{ formatDate(detail.incident_date) }}</span>
           <span class="tag mono">报案金额 {{ formatAmount(detail.claim_amount) }}</span>

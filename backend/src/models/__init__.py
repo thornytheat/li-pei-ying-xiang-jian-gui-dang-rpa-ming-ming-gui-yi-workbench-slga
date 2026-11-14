@@ -4,7 +4,9 @@ from src.models.attachment import Attachment
 from src.models.audit_log import AuditLog
 from src.models.base import Base, TimestampMixin, metadata_obj, new_uuid, utcnow
 from src.models.claim_case import ClaimCase
+from src.models.handover_publish import HandoverPublish
 from src.models.naming_rule import NamingRule
+from src.models.run_source_read import RunSourceRead
 from src.models.user import User
 
 __all__ = [
@@ -13,7 +15,9 @@ __all__ = [
     "AuditLog",
     "Base",
     "ClaimCase",
+    "HandoverPublish",
     "NamingRule",
+    "RunSourceRead",
     "TimestampMixin",
     "User",
     "metadata_obj",

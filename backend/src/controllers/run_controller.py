@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from src.models.user import User
-from src.schemas.run import RunCreateRequest, RunOut
+from src.schemas.run import RunCreateRequest, RunOut, RunResumeRequest
 from src.services import run_service
 
 
@@ -18,6 +18,11 @@ def list_runs(db: Session, limit: int) -> dict:
 
 def create_run(db: Session, payload: RunCreateRequest, user: User) -> dict:
     run = run_service.create_run(db, user=user, mode=payload.mode, note=payload.note)
+    return RunOut(**run).model_dump()
+
+
+def resume_run(db: Session, run_id: str, payload: RunResumeRequest, user: User) -> dict:
+    run = run_service.resume_run(db, user=user, run_id=run_id, note=payload.note)
     return RunOut(**run).model_dump()
 
 

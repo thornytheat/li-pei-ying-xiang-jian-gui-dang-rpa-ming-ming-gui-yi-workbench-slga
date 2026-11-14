@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { createRun, fetchRun, fetchRuns } from '../api/runs'
+import { createRun, fetchRun, fetchRuns, resumeRun } from '../api/runs'
 import type { RunItem, RunMode } from '../types/domain'
 
 interface RunsState {
@@ -60,6 +60,22 @@ export const useRunsStore = defineStore('runs', {
         return run
       } catch (error) {
         this.error = (error as { message?: string }).message ?? '批次发起失败'
+        throw error
+      } finally {
+        this.starting = false
+      }
+    },
+    async resume(runId: string, note = '') {
+      this.starting = true
+      this.error = ''
+      try {
+        const run = await resumeRun(runId, note)
+        this.selected = run
+        await this.load()
+        if (run.status === 'queued' || run.status === 'running') this.poll(run.id)
+        return run
+      } catch (error) {
+        this.error = (error as { message?: string }).message ?? '补扫发起失败'
         throw error
       } finally {
         this.starting = false

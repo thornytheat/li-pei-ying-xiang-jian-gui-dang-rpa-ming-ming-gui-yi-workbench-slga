@@ -39,6 +39,8 @@ class CaseOut(BaseModel):
     archived_materials: list[MaterialRef] = []
     missing_materials: list[MaterialRef] = []
     missing_labels: list[str] = []
+    handover_blocked: bool = False
+    handover_state_label: str = "可移交"
     attachments: list[dict[str, Any]] = []
     updated_at: str | None = None
 

@@ -45,6 +45,10 @@
       <dt>重复投递件</dt>
       <dd>{{ summary?.duplicate_attachments ?? 0 }}</dd>
     </div>
+    <div class="kpi" :class="{ 'kpi--warn': (summary?.handover_blocked_total ?? 0) > 0 }">
+      <dt>暂不能移交</dt>
+      <dd>{{ summary?.handover_blocked_total ?? 0 }}</dd>
+    </div>
     <div class="kpi">
       <dt>影像件总数</dt>
       <dd>{{ summary?.attachment_total ?? 0 }}</dd>
@@ -121,7 +125,14 @@
                   </div>
                   <span v-else class="tiny ok-text">齐全</span>
                 </td>
-                <td><StatusStamp :status="item.status" kind="case" /></td>
+                <td>
+                  <div class="cell-status">
+                    <StatusStamp :status="item.status" kind="case" />
+                    <span v-if="item.handover_blocked" class="tag tag--red cell-status__block" :title="item.handover_state_label">
+                      暂不能移交
+                    </span>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -179,9 +190,18 @@
       </div>
 
       <div class="slip">
-        <div class="panel-head"><h3>投件源</h3></div>
+        <div class="panel-head">
+          <h3>投件源读取覆盖</h3>
+          <span v-if="summary?.source_coverage" class="tiny">
+            版本 v{{ summary.source_coverage.handover_version ?? '—' }}
+          </span>
+        </div>
         <div class="panel-body">
-          <ul class="source-list">
+          <SourceCoveragePanel :coverage="hasCoverageRows ? summary.source_coverage : null" />
+          <p v-if="summary && !summary.handover_publishable" class="tiny block-tip">
+            有来源未核对完成：上表案件标注「暂不能移交」，移交清单不会发布；来源恢复后在批次页发起补扫。
+          </p>
+          <ul class="source-list source-list--meta">
             <li v-for="source in cases.sources" :key="source.code">
               <span class="source-list__name">{{ source.name }}</span>
               <span class="mono source-list__count">{{ source.attachments }}</span>
@@ -203,6 +223,7 @@ import ErrorNotice from '../components/common/ErrorNotice.vue'
 import FolderTabs from '../components/common/FolderTabs.vue'
 import type { FolderTab } from '../types/ui'
 import PageHeader from '../components/common/PageHeader.vue'
+import SourceCoveragePanel from '../components/common/SourceCoveragePanel.vue'
 import StatusStamp from '../components/common/StatusStamp.vue'
 import { usePagination } from '../hooks/usePagination'
 import { EMPTY_HINTS } from '../constants/messages'
@@ -226,6 +247,9 @@ const runNote = ref('')
 
 const summary = computed(() => cases.summary)
 const loading = computed(() => cases.loading)
+const hasCoverageRows = computed<boolean>(
+  () => Array.isArray(summary.value?.source_coverage?.sources) && summary.value.source_coverage.sources.length > 0,
+)
 
 const tabs = computed<FolderTab[]>(() => [
   { key: '', label: '全部', count: summary.value?.case_total ?? 0 },
@@ -295,7 +319,7 @@ watch(
   () => runs.selected?.status,
   async (status) => {
     if (!status) return
-    if (status === 'succeeded' || status === 'failed') {
+    if (status === 'succeeded' || status === 'failed' || status === 'partial') {
       const run = runs.selected
       if (run) {
         runNote.value = `批次 ${run.run_no} ${run.status_label}：扫描 ${run.scanned} · 归档 ${run.archived} · 重复 ${run.duplicate} · 待确认 ${run.pending} · 未识别 ${run.unknown}`
@@ -419,6 +443,39 @@ onBeforeUnmount(() => runs.stopPoll())
   grid-column: 1 / -1;
   text-transform: none;
   letter-spacing: 0;
+}
+
+.source-list--meta {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.cell-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.cell-status__block {
+  font-size: 0.66rem;
+  transform: none;
+}
+
+.block-tip {
+  margin: 10px 0 0;
+  padding: 8px;
+  color: var(--seal-red);
+  background: var(--seal-red-soft);
+  border: 1px solid var(--seal-red);
+  line-height: 1.6;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.kpi--warn dd {
+  color: var(--warn);
 }
 
 .pulse {

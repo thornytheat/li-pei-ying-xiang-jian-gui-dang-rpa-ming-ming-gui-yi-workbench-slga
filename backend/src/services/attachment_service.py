@@ -13,7 +13,7 @@ from src.models.archive_run import ArchiveRun
 from src.models.attachment import Attachment
 from src.models.claim_case import ClaimCase
 from src.models.user import User
-from src.services import archive_service, audit_service, rule_service
+from src.services import archive_service, audit_service, case_service, rule_service
 from src.services.case_service import serialize_attachment
 from src.services.naming_engine import plan_target
 from src.utils.errors import AppError
@@ -124,7 +124,9 @@ def confirm(
             f"（{MATERIAL_TYPE_LABELS[material_type]}，提单 {policy}）",
         )
 
-    archive_service.recompute_case_statuses(db)
+    # 人工改判后的核销同样受来源覆盖闸门约束：未覆盖来源的案件只暂不移交，不改状态
+    blocked_nos = case_service.current_blocked_case_nos(db)
+    archive_service.recompute_case_statuses(db, blocked_nos)
     audit_service.record(
         db,
         action=ACTION_ATTACHMENT_CONFIRM,

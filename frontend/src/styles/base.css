@@ -371,6 +371,10 @@ table {
 .stamp--green {
   color: var(--seal-green);
 }
+.stamp--amber {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
 .stamp--muted {
   color: var(--ink-3);
   border-style: dashed;

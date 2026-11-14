@@ -17,6 +17,7 @@ from src.constants.enums import (
 )
 from src.models.attachment import Attachment
 from src.models.claim_case import ClaimCase
+from src.services import source_service
 from src.utils.errors import AppError
 from src.utils.ids import as_uuid
 from src.utils.textutils import human_size
@@ -97,8 +98,10 @@ def case_stats(case: ClaimCase, attachments: list[Attachment]) -> dict:
     }
 
 
-def serialize_case(case: ClaimCase, attachments: list[Attachment]) -> dict:
+def serialize_case(case: ClaimCase, attachments: list[Attachment], blocked_case_nos: set[str] | None = None) -> dict:
     stats = case_stats(case, attachments)
+    blocked_case_nos = blocked_case_nos or set()
+    handover_blocked = case.case_no in blocked_case_nos
     return {
         "id": str(case.id),
         "case_no": case.case_no,
@@ -113,9 +116,21 @@ def serialize_case(case: ClaimCase, attachments: list[Attachment]) -> dict:
         "incident_date": case.incident_date.isoformat() if case.incident_date else None,
         "claim_amount": float(case.claim_amount or 0),
         "note": case.note,
+        # 来源未覆盖闸门：只是「暂时不能移交」，案件状态本身不改写、材料不计丢失
+        "handover_blocked": handover_blocked,
+        "handover_state_label": "暂时不能移交（投件源未覆盖）" if handover_blocked else "可移交",
         "updated_at": case.updated_at.isoformat() if case.updated_at else None,
         **stats,
     }
+
+
+def current_blocked_case_nos(db: Session) -> set[str]:
+    """基于最近有效批次链的来源覆盖，算出当前暂时不能移交的案件号集合（无有效批次时为空）。"""
+    latest = source_service.latest_coverage_run(db)
+    if latest is None:
+        return set()
+    coverage = source_service.chain_coverage(db, latest)
+    return source_service.blocked_case_nos(db, coverage)
 
 
 def _attachments_by_case(db: Session) -> dict[str, list[Attachment]]:
@@ -148,7 +163,10 @@ def list_cases(db: Session, status: str = "", query: str = "", page: int = 1, pa
         db.execute(stmt.order_by(ClaimCase.case_no).offset((page - 1) * page_size).limit(page_size)).scalars().all()
     )
     grouped = _attachments_by_case(db)
-    items = [serialize_case(case, grouped.get(str(case.id), [])) for case in cases]
+    blocked_nos = current_blocked_case_nos(db)
+    items = [
+        serialize_case(case, grouped.get(str(case.id), []), blocked_nos) for case in cases
+    ]
     return {
         "items": items,
         "total": total,
@@ -161,6 +179,7 @@ def list_cases(db: Session, status: str = "", query: str = "", page: int = 1, pa
 def summary(db: Session) -> dict:
     cases = db.execute(select(ClaimCase)).scalars().all()
     grouped = _attachments_by_case(db)
+    blocked_nos = current_blocked_case_nos(db)
     status_counts = {status: 0 for status in CASE_STATUS_LABELS}
     exception_cases: list[dict] = []
     for case in cases:
@@ -183,6 +202,17 @@ def summary(db: Session) -> dict:
     for att in all_attachments:
         attachment_counts[att.status] = attachment_counts.get(att.status, 0) + 1
         material_counts[att.material_type] = material_counts.get(att.material_type, 0) + 1
+
+    # 最近有效批次链的来源覆盖（工作台用来提示每个来源差了什么）
+    coverage_payload: dict = {}
+    latest = source_service.latest_coverage_run(db)
+    if latest is not None:
+        coverage_payload = source_service.serialize_coverage(source_service.chain_coverage(db, latest))
+        coverage_payload["root_run_no"] = latest.root_run_no or latest.run_no
+        coverage_payload["handover_version"] = latest.handover_version
+        coverage_payload["latest_run_no"] = latest.run_no
+        coverage_payload["latest_status"] = latest.status
+
     return {
         "case_status": status_counts,
         "case_total": len(cases),
@@ -209,6 +239,10 @@ def summary(db: Session) -> dict:
         "duplicate_attachments": attachment_counts.get(AttachmentStatus.DUPLICATE.value, 0),
         "pending_attachments": attachment_counts.get(AttachmentStatus.PENDING.value, 0),
         "unknown_attachments": attachment_counts.get(AttachmentStatus.UNKNOWN.value, 0),
+        "source_coverage": coverage_payload,
+        "handover_blocked_total": len(blocked_nos),
+        "handover_blocked_case_nos": sorted(blocked_nos),
+        "handover_publishable": bool(coverage_payload.get("all_covered", False)),
     }
 
 
@@ -222,7 +256,7 @@ def detail(db: Session, case_id: str) -> dict:
         .scalars()
         .all()
     )
-    payload = serialize_case(case, attachments)
+    payload = serialize_case(case, attachments, current_blocked_case_nos(db))
     payload["attachments"] = [serialize_attachment(att, case) for att in attachments]
     payload["materials"] = sorted(
         {att.material_type for att in attachments if att.material_type != "unknown"}

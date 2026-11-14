@@ -42,7 +42,24 @@ class RunStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
+    PARTIAL = "partial"  # 部分投件源读取失败：已扫到的部分照常处理，但不得核销/移交
     FAILED = "failed"
+
+
+class SourceReadStatus(str, Enum):
+    """批次内单个投件源的读取覆盖状态。"""
+
+    PENDING = "pending"    # 本轮尚未读取
+    COVERED = "covered"    # 读取成功，本来源已核对完成
+    FAILED = "failed"      # 读取超时/挂载缺失等：本轮未覆盖，恢复后只补这一来源
+
+
+# 读取失败原因码（写入 run_source_reads.failure_reason，前端映射中文）
+class SourceFailureReason(str, Enum):
+    TIMEOUT = "read_timeout"        # 来源读取超时
+    NOT_MOUNTED = "not_mounted"     # 挂载点/邮箱不可达
+    PERMISSION = "permission_denied"  # 只读或无权限
+    UNKNOWN = "unknown_error"       # 其他异常（原文进 failure_detail）
 
 
 class RunMode(str, Enum):
@@ -107,7 +124,21 @@ RUN_STATUS_LABELS: dict[str, str] = {
     RunStatus.QUEUED.value: "排队中",
     RunStatus.RUNNING.value: "执行中",
     RunStatus.SUCCEEDED.value: "已完成",
+    RunStatus.PARTIAL.value: "部分来源未覆盖",
     RunStatus.FAILED.value: "失败",
+}
+
+SOURCE_READ_STATUS_LABELS: dict[str, str] = {
+    SourceReadStatus.PENDING.value: "待读取",
+    SourceReadStatus.COVERED.value: "已覆盖",
+    SourceReadStatus.FAILED.value: "读取失败",
+}
+
+SOURCE_FAILURE_LABELS: dict[str, str] = {
+    SourceFailureReason.TIMEOUT.value: "来源读取超时",
+    SourceFailureReason.NOT_MOUNTED.value: "来源不可达（未挂载/邮箱连不上）",
+    SourceFailureReason.PERMISSION.value: "读取权限不足",
+    SourceFailureReason.UNKNOWN.value: "读取异常",
 }
 
 RUN_MODE_LABELS: dict[str, str] = {
@@ -134,6 +165,13 @@ SOURCE_LABELS: dict[str, str] = {
     IngestSource.MAILBOX.value: "claims@hangan-broker.cn（理赔邮箱附件）",
     IngestSource.PORTABLE.value: "移动盘补件（现场带回）",
 }
+
+# 全部投件源代码的固定顺序（来源覆盖台账按此顺序展示）
+ALL_SOURCE_CODES: tuple[str, ...] = (
+    IngestSource.SHARED_DRIVE.value,
+    IngestSource.MAILBOX.value,
+    IngestSource.PORTABLE.value,
+)
 
 # 每个险种应收材料（用于缺失材料提示与归档完整性）
 EXPECTED_MATERIALS: dict[str, tuple[str, ...]] = {

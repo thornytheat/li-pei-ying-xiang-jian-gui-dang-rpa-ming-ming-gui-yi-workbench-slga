@@ -42,14 +42,31 @@ export const ATTACHMENT_STATUS_LABELS: Record<AttachmentStatusKey, string> = {
   duplicate: '重复件',
 }
 
-export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed'] as const
+export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'partial', 'failed'] as const
 export type RunStatusKey = (typeof RUN_STATUSES)[number]
 
 export const RUN_STATUS_LABELS: Record<RunStatusKey, string> = {
   queued: '排队中',
   running: '执行中',
   succeeded: '已完成',
+  partial: '部分来源未覆盖',
   failed: '失败',
+}
+
+export const SOURCE_READ_STATUSES = ['pending', 'covered', 'failed'] as const
+export type SourceReadStatusKey = (typeof SOURCE_READ_STATUSES)[number]
+
+export const SOURCE_READ_STATUS_LABELS: Record<SourceReadStatusKey, string> = {
+  pending: '待读取',
+  covered: '已覆盖',
+  failed: '读取失败',
+}
+
+export const SOURCE_FAILURE_LABELS: Record<string, string> = {
+  read_timeout: '来源读取超时',
+  not_mounted: '来源不可达（未挂载/邮箱连不上）',
+  permission_denied: '读取权限不足',
+  unknown_error: '读取异常',
 }
 
 export const RUN_MODES = ['dry_run', 'archive'] as const

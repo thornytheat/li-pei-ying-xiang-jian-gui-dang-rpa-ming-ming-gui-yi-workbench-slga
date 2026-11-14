@@ -8,8 +8,8 @@
       <button
         type="button"
         class="btn btn--small"
-        :disabled="!auth.can('exports:handover') || exporting"
-        :title="auth.can('exports:handover') ? '按案件导出 60 行移交清单' : '稽核角色只能导出稽核清单'"
+        :disabled="!auth.can('exports:handover') || exporting || !handoverReady"
+        :title="handoverButtonTitle"
         @click="exportHandover"
       >
         导出移交清单 CSV
@@ -21,6 +21,13 @@
   </PageHeader>
 
   <ErrorNotice v-if="pending.error" :message="pending.error" @retry="reload" />
+
+  <div v-if="cases.summary && !handoverReady && hasCoverageRows" class="coverage-banner">
+    <SourceCoveragePanel :coverage="cases.summary.source_coverage ?? null" />
+    <p class="tiny coverage-banner__tip">
+      投件源未全部核对完成，移交清单暂不能发布；请先在「命名规则与归档批次」页对失败来源发起补扫。
+    </p>
+  </div>
 
   <dl class="kpi-rail">
     <div class="kpi">
@@ -181,16 +188,19 @@ import FolderTabs from '../components/common/FolderTabs.vue'
 import type { FolderTab } from '../types/ui'
 import PageHeader from '../components/common/PageHeader.vue'
 import RenameCompare from '../components/common/RenameCompare.vue'
+import SourceCoveragePanel from '../components/common/SourceCoveragePanel.vue'
 import StatusStamp from '../components/common/StatusStamp.vue'
 import { downloadAudit, downloadHandover } from '../api/exports'
 import { MATERIAL_LABELS, SOURCE_LABELS, type MaterialType } from '../constants/enums'
 import { EMPTY_HINTS } from '../constants/messages'
 import { useAuthStore } from '../stores/authStore'
+import { useCasesStore } from '../stores/casesStore'
 import { usePendingStore } from '../stores/pendingStore'
 import type { AttachmentItem } from '../types/domain'
 import { formatDate } from '../utils/format'
 
 const pending = usePendingStore()
+const cases = useCasesStore()
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -219,6 +229,20 @@ const visibleItems = computed<AttachmentItem[]>(() => {
   return queue.items
 })
 
+const handoverReady = computed<boolean>(() => cases.summary?.handover_publishable ?? false)
+
+const hasCoverageRows = computed<boolean>(
+  () =>
+    Array.isArray(cases.summary?.source_coverage?.sources) &&
+    cases.summary.source_coverage.sources.length > 0,
+)
+
+const handoverButtonTitle = computed<string>(() => {
+  if (!auth.can('exports:handover')) return '稽核角色只能导出稽核清单'
+  if (!handoverReady.value) return '投件源未全部核对完成，移交清单暂不能发布'
+  return '按案件导出移交清单（含移交版本与逐案移交状态）'
+})
+
 function pad(value: number): string {
   return String(value).padStart(3, '0')
 }
@@ -228,7 +252,7 @@ function sourceLabel(code: string): string {
 }
 
 async function reload() {
-  await pending.load()
+  await Promise.all([pending.load(), cases.loadSummary()])
 }
 
 function onConfirmed(att: AttachmentItem) {
@@ -243,7 +267,8 @@ async function exportHandover() {
   exportError.value = ''
   try {
     const name = await downloadHandover()
-    exportNote.value = `已生成 ${name}（60 行，含附件数与缺失材料提示）`
+    exportNote.value = `已生成 ${name}（含逐案移交状态与移交版本，版本号与批次链一致）`
+    await cases.loadSummary()
   } catch (error) {
     exportError.value = (error as { message?: string }).message ?? '导出失败'
   } finally {
@@ -269,6 +294,21 @@ onMounted(reload)
 </script>
 
 <style scoped>
+.coverage-banner {
+  border: 1px solid var(--seal-red);
+  background: var(--seal-red-soft);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.coverage-banner__tip {
+  margin: 8px 0 0;
+  color: var(--seal-red);
+  line-height: 1.6;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .tabs-wrap {
   padding: 0 18px;
 }

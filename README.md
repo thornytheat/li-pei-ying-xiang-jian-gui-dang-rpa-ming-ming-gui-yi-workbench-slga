@@ -51,7 +51,11 @@
 配置 → 运行/采集 → 解析/计算 → 复核/归因 → 导出，五个模块串成一条链路：
 
 1. **配置**：命名规则按版本落库（模板 + 冲突策略 + 日期来源）；3 个投件源（共享盘/邮箱/移动盘）与计数。
-2. **运行/采集**：发起归档批次（试运行 / 正式归档），批次记录扫描、新增、归档、重复、待确认、未识别、未变、人工计数与逐行日志。
+2. **运行/采集**：发起归档批次（试运行 / 正式归档），逐来源记录读取覆盖与失败原因；批次记录扫描、新增、归档、重复、待确认、未识别、未变、人工计数与逐行日志。
+   - **来源容错**：共享盘/邮箱/移动盘任一来源读取超时或不可达时，批次按已扫到的部分结束并置 `partial`（全部来源都失败才 `failed`），
+     逐来源写 `run_source_reads`（状态/读取件数/失败原因/耗时）；来源未全部覆盖时，相关案件不核销、移交清单发布被硬拦截（409），
+     未读到的材料不产生附件行、更不计「丢失」；来源恢复后在批次页点「只补失败来源」，补扫只重读失败来源并挂到同一批次链，
+     移交版本号保持一致，重试发布不升版（留痕 `handover_publishes`）。
 3. **解析/计算**：算法 1 材料类型识别（四路特征加权），算法 2 命名归一与冲突消解（SHA-256 判重复、序号递增）。
 4. **复核/归因**：待确认队列（低置信 7 件 / 未识别 4 件），逐件看候选分数与分类依据，人工改判并补保单号。
 5. **导出**：移交清单 CSV（按案件 60 行）+ 稽核清单 CSV（审计日志），都写审计。
@@ -118,6 +122,25 @@ docker compose ps
 docker compose exec backend python -m scripts.seed_demo
 ```
 
+### 来源容错演示剧本（超时 → partial → 补扫 → 移交）
+
+```bash
+# 1) 注入邮箱读取超时后发起正式归档（worker 与 backend 同读该变量）
+SOURCE_FAULTS='{"mailbox":{"reason":"read_timeout","detail":"imap 连接 5s 超时"}}' docker compose up -d
+# 批次结束状态为 partial：批次详情「投件源读取覆盖」里邮箱显示读取失败原因，
+# 工作台相关案件标「暂不能移交」，点导出移交清单返回 409 HANDOVER_BLOCKED。
+
+# 2) 来源恢复：清空故障变量（或改 SOURCE_FAULT_FILE）后在批次页点「只补失败来源」
+#    补扫只重读邮箱，生成同批次链新 run，handover_version 不变；
+#    三来源全部 covered 后案件正常核销，移交清单可发布，重试发布文件名版本号一致。
+```
+
+无容器环境可直接跑纯标准库规则验证（不依赖 DB / 第三方包）：
+
+```bash
+cd backend && python3 -I scripts/verify_source_coverage.py && python3 -I scripts/verify_source_coverage_e2e.py
+```
+
 ### 演示账号（口令统一 `Demo@2026`）
 
 | 邮箱 | 角色 | 能做什么 |
@@ -148,7 +171,7 @@ cd frontend && npm install && npm run dev   # http://localhost:18253，/api 代�
 | 前端 | Vue 3.4 + TypeScript + Vite 5 + Pinia + vue-router | 组合式 API，无 UI 框架，SVG 自绘图表 |
 | 后端 | Python 3.11 + FastAPI 0.115 + SQLAlchemy 2.0 + Pydantic v2 | JWT（PyJWT）+ passlib(bcrypt) |
 | 异步 | Celery 5.4 + Redis 7 | `docflow.archive_run` / heartbeat / drop_sweep |
-| 数据库 | PostgreSQL 16（schema `docflow`） | 6 张表：users / claim_cases / attachments / naming_rules / archive_runs / audit_logs |
+| 数据库 | PostgreSQL 16（schema `docflow`） | 8 张表：users / claim_cases / attachments / naming_rules / archive_runs / run_source_reads / handover_publishes / audit_logs |
 | 前端托管 | Nginx 1.27 | `location /api/ → backend:8000/` + SPA 回落 |
 | 字体 | Noto Serif SC + Courier Prime | 离线时回退系统衬线/等宽字体（见 TESTING.md） |
 
@@ -165,15 +188,17 @@ gb-580/
 │   ├── Dockerfile  entrypoint.sh  requirements.txt  alembic.ini
 │   ├── migrations/             # 0001_initial + env.py
 │   ├── scripts/
-│   │   ├── bootstrap_db.py     # 幂等 create_all
+│   │   ├── bootstrap_db.py     # 幂等 create_all + 老库补列（来源覆盖改造）
 │   │   ├── fixtures.py         # 确定性演示数据（60 案 / 210 件）
-│   │   └── seed_demo.py        # 幂等 seed + SEED_SUMMARY
+│   │   ├── seed_demo.py        # 幂等 seed + SEED_SUMMARY
+│   │   ├── verify_source_coverage.py      # 来源容错纯规则离线验证（python3 -I，仅标准库）
+│   │   └── verify_source_coverage_e2e.py  # 失败→partial→阻断→补扫→放行全链路离线验证
 │   └── src/
 │       ├── config/             # settings / database / celery_app / app
 │       ├── constants/          # enums / roles / error_codes / limits / log_templates
 │       ├── models/             # 4 实体 + user + audit_log
 │       ├── schemas/            # auth / case / attachment / rule / run
-│       ├── services/           # material_classifier / naming_engine / archive / case / run / rule / pending / export / audit / auth
+│       ├── services/           # material_classifier / naming_engine / source_coverage(纯规则) / source_service / archive / case / run / rule / pending / export / audit / auth
 │       ├── controllers/        # 薄控制器
 │       ├── routes/             # /api/* 与根路径各挂一次
 │       ├── middlewares/        # auth / rbac / rate_limit / login_guard / audit_logger / error_handler
@@ -210,6 +235,8 @@ gb-580/
 | `RATE_LIMIT_RUN_PER_MINUTE` | `8` | 每用户每分钟可发起批次数 |
 | `RATE_LIMIT_CONFIRM_PER_MINUTE` | `40` | 每分钟改判次数 |
 | `LOGIN_ATTEMPT_PER_MINUTE` | `12` | 单 IP 每分钟登录尝试 |
+| `SOURCE_FAULTS` | （空） | 投件源故障注入 JSON，如 `{"mailbox":{"reason":"read_timeout","detail":"imap 5s 超时"}}`；reason：`read_timeout`/`not_mounted`/`permission_denied`/`unknown_error` |
+| `SOURCE_FAULT_FILE` | （空） | 指向容器内故障 JSON 文件，改文件即可切换故障，无需重启 |
 
 ## 7. Docker 说明
 
@@ -224,8 +251,8 @@ gb-580/
 **前端** `frontend/src/constants/enums.ts`：`MATERIAL_TYPES` / `MATERIAL_LABELS` / `MATERIAL_SHORT`、`CASE_STATUSES` / `CASE_STATUS_LABELS`、`ATTACHMENT_STATUSES` / `ATTACHMENT_STATUS_LABELS`、`RUN_STATUSES` / `RUN_STATUS_LABELS`、`RUN_MODES` / `RUN_MODE_LABELS`、`INSURANCE_TYPES` / `INSURANCE_LABELS`、`SOURCE_LABELS` / `SOURCE_SHORT`、`FEATURE_WEIGHTS`、`TEMPLATE_TOKENS`。
 引用点：`types/domain.ts`、`components/common/{StatusStamp,MaterialTag,DistributionBar,ConfirmAttachmentDialog}.vue`、`pages/{CaseWorkbenchPage,CaseDetailPage,PendingQueuePage,RulesRunsPage}.vue`、`stores/*`、`api/*`。
 
-**后端** `backend/src/constants/enums.py`：`MaterialType`、`CaseStatus`、`AttachmentStatus`、`RunStatus`、`RunMode`、`InsuranceType`、`IngestSource` + 各 `*_LABELS` + `EXPECTED_MATERIALS` + `FEATURE_WEIGHTS`。
-引用点：`services/material_classifier.py`、`services/naming_engine.py`、`services/archive_service.py`、`services/case_service.py`、`services/pending_service.py`、`services/export_service.py`、`services/run_service.py`、`models/*`、`schemas/*`、`scripts/seed_demo.py`、`scripts/fixtures.py`。
+**后端** `backend/src/constants/enums.py`：`MaterialType`、`CaseStatus`、`AttachmentStatus`、`RunStatus`（含 `partial` 部分来源未覆盖）、`SourceReadStatus`、`SourceFailureReason`、`RunMode`、`InsuranceType`、`IngestSource` + 各 `*_LABELS` + `EXPECTED_MATERIALS` + `FEATURE_WEIGHTS`。
+引用点：`services/material_classifier.py`、`services/naming_engine.py`、`services/archive_service.py`、`services/source_coverage.py`、`services/source_service.py`、`services/case_service.py`、`services/pending_service.py`、`services/export_service.py`、`services/run_service.py`、`models/*`、`schemas/*`、`scripts/seed_demo.py`、`scripts/fixtures.py`。
 
 **角色枚举**：前端 `frontend/src/constants/roles.ts` ↔ 后端 `backend/src/constants/roles.py`（`admin` / `analyst` / `auditor` + 权限矩阵）。
 

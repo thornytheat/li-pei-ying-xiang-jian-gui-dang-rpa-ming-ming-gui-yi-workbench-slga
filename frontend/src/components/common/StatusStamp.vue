@@ -24,6 +24,7 @@ const label = computed(() => {
 const variantClass = computed(() => {
   if (props.status === 'archived' || props.status === 'succeeded') return 'stamp--green'
   if (props.status === 'exception' || props.status === 'failed' || props.status === 'duplicate') return 'stamp--red'
+  if (props.status === 'partial') return 'stamp--amber'
   if (props.status === 'pending' || props.status === 'pending_docs' || props.status === 'running') return 'stamp--muted'
   return ''
 })

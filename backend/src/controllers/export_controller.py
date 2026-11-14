@@ -6,18 +6,26 @@ from sqlalchemy.orm import Session
 
 from src.constants.log_templates import ACTION_EXPORT_AUDIT, ACTION_EXPORT_HANDOVER
 from src.models.user import User
-from src.services import audit_service, export_service
+from src.services import audit_service, export_service, source_service
 
 
 def handover(db: Session, user: User, request: Request) -> tuple[str, bytes]:
-    filename, content = export_service.handover_csv(db)
+    # 服务层先做来源覆盖硬闸门（未全覆盖抛 HANDOVER_BLOCKED / 409，不会产出文件）
+    filename, content = export_service.handover_csv(db, actor_email=user.email)
+    latest = source_service.latest_coverage_run(db)
+    coverage = source_service.chain_coverage(db, latest) if latest else None
     audit_service.record(
         db,
         action=ACTION_EXPORT_HANDOVER,
         actor=user,
         entity_type="export",
         entity_id=filename,
-        detail={"rows": 60, "bytes": len(content)},
+        detail={
+            "bytes": len(content),
+            "root_run_no": (latest.root_run_no if latest else ""),
+            "handover_version": (latest.handover_version if latest else 0),
+            "all_sources_covered": bool(coverage.all_covered) if coverage else False,
+        },
         trace_id=getattr(request.state, "trace_id", ""),
     )
     db.commit()

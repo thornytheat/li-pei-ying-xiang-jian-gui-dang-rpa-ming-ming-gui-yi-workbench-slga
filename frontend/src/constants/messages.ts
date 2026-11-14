@@ -14,6 +14,9 @@ export const ERROR_MESSAGES: Record<string, string> = {
   RUN_NOT_READY: '批次尚未生成完成',
   RUN_BUSY: '已有批次正在执行，请稍后再发起',
   RUN_FAILED: '批次执行失败，请查看批次日志',
+  RUN_PARTIAL: '存在投件源未覆盖，不能核销案件或发布移交',
+  RUN_NOT_RESUMABLE: '该批次没有失败来源，或已全部覆盖，无需补扫',
+  HANDOVER_BLOCKED: '投件源未全部核对完成，移交清单暂不能发布',
   RATE_LIMITED: '请求过于频繁，请稍后重试',
   INTERNAL_ERROR: '服务内部错误',
 }

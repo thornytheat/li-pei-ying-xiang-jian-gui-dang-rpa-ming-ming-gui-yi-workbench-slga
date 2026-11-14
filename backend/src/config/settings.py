@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     pending_confidence_threshold: float = 0.60
     duplicate_seq_limit: int = 99
 
+    # 投件源故障注入（演示来源超时/不可达场景）：
+    #   SOURCE_FAULTS='{"mailbox": {"reason": "read_timeout", "detail": "imap 5s 超时"}}'
+    #   SOURCE_FAULT_FILE=/app/config/source_faults.json（可在不重启进程的情况下切换故障）
+    # reason 取值：read_timeout / not_mounted / permission_denied / unknown_error
+    source_faults: str = ""
+    source_fault_file: str = ""
+
     @property
     def database_url(self) -> str:
         return (

@@ -203,6 +203,26 @@
           <span class="tiny">{{ runs.selected.mode_label }} · {{ runs.selected.status_label }}</span>
         </div>
         <div class="panel-body stack">
+          <p class="tiny run-chain-line">
+            批次链 <span class="mono">{{ runs.selected.root_run_no }}</span>
+            · 移交版本 <span class="mono">v{{ runs.selected.handover_version }}</span>
+            <span v-if="runs.selected.run_no !== runs.selected.root_run_no" class="tiny">（补扫批次，版本沿用根批次）</span>
+          </p>
+
+          <SourceCoveragePanel :coverage="runs.selected.chain_coverage ?? runs.selected.source_coverage" />
+
+          <div v-if="canResume(runs.selected)" class="row resume-row">
+            <button
+              type="button"
+              class="btn btn--seal btn--small"
+              :disabled="runs.busy || runs.starting"
+              @click="resume(runs.selected)"
+            >
+              {{ runs.busy ? '补扫执行中…' : '只补失败来源（恢复后补扫）' }}
+            </button>
+            <span class="tiny resume-hint">仅重读读取失败的来源，已覆盖来源与移交版本号不变</span>
+          </div>
+
           <dl class="run-counters">
             <div><dt>扫描</dt><dd class="mono">{{ runs.selected.scanned }}</dd></div>
             <div><dt>新增</dt><dd class="mono">{{ runs.selected.new_files }}</dd></div>
@@ -217,9 +237,25 @@
             由 {{ runs.selected.triggered_by_email }} 发起 · {{ formatDuration(runs.selected.duration_ms) }} ·
             落盘 {{ runs.selected.stored_files ?? runs.storedFiles }} 个文件
           </p>
+          <p v-if="!runs.selected.all_sources_covered" class="tiny block-line">
+            投件源未全部核对完成：相关案件暂不核销、移交清单暂不能发布
+          </p>
           <div class="run-log">
             <p v-for="line in runs.selected.log" :key="line" class="mono">{{ line }}</p>
             <p v-if="!runs.selected.log.length" class="mono muted">（暂无日志）</p>
+          </div>
+
+          <div v-if="runs.selected.publishes?.length" class="publish-list">
+            <h4 class="tiny publish-list__title">移交发布记录（同链版本一致）</h4>
+            <ul>
+              <li v-for="pub in runs.selected.publishes" :key="pub.id" class="tiny">
+                <span class="mono">v{{ pub.handover_version }}</span>
+                <span class="mono">{{ pub.run_no }}</span>
+                <span>{{ pub.triggered_by_email || '—' }}</span>
+                <span class="mono">{{ pub.row_count }} 行</span>
+                <span>{{ formatDateTime(pub.created_at) }}</span>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
@@ -264,6 +300,7 @@ import ErrorNotice from '../components/common/ErrorNotice.vue'
 import FolderTabs from '../components/common/FolderTabs.vue'
 import type { FolderTab } from '../types/ui'
 import PageHeader from '../components/common/PageHeader.vue'
+import SourceCoveragePanel from '../components/common/SourceCoveragePanel.vue'
 import StatusStamp from '../components/common/StatusStamp.vue'
 import { fetchAudit, type AuditEntry } from '../api/audit'
 import { EMPTY_HINTS } from '../constants/messages'
@@ -273,7 +310,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useCasesStore } from '../stores/casesStore'
 import { useRulesStore } from '../stores/rulesStore'
 import { useRunsStore } from '../stores/runsStore'
-import type { RunMode } from '../types/domain'
+import type { RunItem, RunMode } from '../types/domain'
 import { formatDateTime, formatDuration } from '../utils/format'
 
 const rules = useRulesStore()
@@ -352,15 +389,34 @@ async function startRun() {
   }
 }
 
+function canResume(run: RunItem | null): boolean {
+  if (!run || !canRun.value) return false
+  const coverage = run.chain_coverage ?? run.source_coverage
+  return Boolean(coverage && coverage.sources?.some((row) => row.status === 'failed'))
+}
+
+async function resume(run: RunItem) {
+  starting.value = true
+  runNote.value = ''
+  try {
+    const refreshed = await runs.resume(run.id, '来源恢复，只补失败来源')
+    runNote.value = `补扫批次 ${refreshed.run_no} 已提交（沿用版本 v${refreshed.handover_version}）`
+  } catch (error) {
+    runNote.value = (error as { message?: string }).message ?? '补扫发起失败'
+  } finally {
+    starting.value = false
+  }
+}
+
 watch(
   () => runs.selected?.status,
   async (status) => {
-    if (status === 'succeeded' || status === 'failed') {
+    if (status === 'succeeded' || status === 'failed' || status === 'partial') {
       const run = runs.selected
       if (run) {
         runNote.value = `批次 ${run.run_no} ${run.status_label}：扫描 ${run.scanned} · 归档 ${run.archived} · 重复 ${run.duplicate} · 待确认 ${run.pending} · 未识别 ${run.unknown}`
       }
-      await cases.loadSources()
+      await Promise.all([runs.load(), cases.loadSources()])
     }
   },
 )
@@ -525,6 +581,56 @@ onBeforeUnmount(() => runs.stopPoll())
   text-transform: none;
   letter-spacing: 0;
   line-height: 1.6;
+}
+
+.run-chain-line {
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.block-line {
+  color: var(--seal-red);
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.6;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--seal-red);
+  background: var(--seal-red-soft);
+}
+
+.resume-row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.resume-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--kraft-deep);
+}
+
+.publish-list__title {
+  margin: 8px 0 4px;
+  letter-spacing: 0.08em;
+}
+
+.publish-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.publish-list li {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 5px 0;
+  border-bottom: 1px dotted var(--line);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .run-log {

@@ -2,9 +2,48 @@ import type { MaterialType } from '../constants/enums'
 
 export type CaseStatus = 'pending_docs' | 'archived' | 'exception'
 export type AttachmentStatus = 'classified' | 'pending' | 'unknown' | 'archived' | 'duplicate'
-export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type RunStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed'
 export type RunMode = 'dry_run' | 'archive'
 export type InsuranceType = 'medical' | 'critical' | 'accident' | 'auto' | 'life'
+
+export interface SourceCoverageRow {
+  source_code: string
+  name: string
+  status: 'pending' | 'covered' | 'failed'
+  status_label: string
+  read_count: number
+  failure_reason: string
+  failure_detail: string
+  failure_label: string
+  duration_ms: number
+}
+
+export interface SourceCoverage {
+  total_sources: number
+  covered_sources: number
+  failed_sources: number
+  read_count: number
+  all_covered: boolean
+  sources: SourceCoverageRow[]
+  failed_codes?: string[]
+  pending_codes?: string[]
+  root_run_no?: string
+  handover_version?: number
+  latest_run_no?: string
+  latest_status?: string
+}
+
+export interface HandoverPublish {
+  id: string
+  root_run_no: string
+  handover_version: number
+  run_no: string
+  triggered_by_email: string
+  file_name: string
+  row_count: number
+  byte_count: number
+  created_at: string | null
+}
 
 export interface MaterialRef {
   material_type: MaterialType
@@ -45,6 +84,8 @@ export interface CaseItem {
   archived_materials: MaterialRef[]
   missing_materials: MaterialRef[]
   missing_labels: string[]
+  handover_blocked: boolean
+  handover_state_label: string
   attachments?: AttachmentItem[]
   materials?: MaterialType[]
   updated_at: string | null
@@ -95,6 +136,12 @@ export interface RunItem {
   template_snapshot: string
   triggered_by_email: string
   note: string
+  root_run_id: string
+  root_run_no: string
+  handover_version: number
+  source_coverage: SourceCoverage
+  chain_coverage?: SourceCoverage
+  all_sources_covered: boolean
   scanned: number
   new_files: number
   archived: number
@@ -106,6 +153,7 @@ export interface RunItem {
   manual: number
   auto_named: number
   log: string[]
+  publishes?: HandoverPublish[]
   started_at: string | null
   finished_at: string | null
   duration_ms: number
@@ -151,6 +199,10 @@ export interface CaseSummary {
   duplicate_attachments: number
   pending_attachments: number
   unknown_attachments: number
+  source_coverage: SourceCoverage
+  handover_blocked_total: number
+  handover_blocked_case_nos: string[]
+  handover_publishable: boolean
 }
 
 export interface PagedCases {

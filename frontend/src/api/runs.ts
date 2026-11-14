@@ -17,6 +17,11 @@ export async function createRun(mode: RunMode, note = ''): Promise<RunItem> {
   return data
 }
 
+export async function resumeRun(runId: string, note = ''): Promise<RunItem> {
+  const { data } = await http.post<RunItem>(`/runs/${runId}/resume`, { note })
+  return data
+}
+
 export async function fetchRun(runId: string): Promise<RunItem> {
   const { data } = await http.get<RunItem>(`/runs/${runId}`)
   return data
